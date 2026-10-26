@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhishGuard — URL Phishing Detector</title>
+<style>
+    /* ── Reset & base ──────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:           #0f1117;
+      --surface:      #1a1d27;
+      --surface2:     #22263a;
+      --border:       #2e3250;
+      --text:         #e8eaf6;
+      --muted:        #7b82ae;
+      --accent:       #6c63ff;
+      --accent-glow:  rgba(108,99,255,0.3);
+      --safe:         #22c55e;
+      --warning:      #f59e0b;
+      --danger:       #ef4444;
+      --uncertain:    #3b82f6;
+      --radius:       14px;
+      --transition:   0.25s cubic-bezier(.4,0,.2,1);
+    }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Background mesh ───────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: -1;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(108,99,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 80%, rgba(236,72,153,0.08) 0%, transparent 60%),
+        var(--bg);
+    }
+
+    /* ── Layout ────────────────────────────────────────────── */
+    .page { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    /* ── Header ────────────────────────────────────────────── */
+    header { text-align: center; margin-bottom: 2.5rem; }
+    .logo-row { display: flex; align-items: center; justify-content: center; gap: .75rem; margin-bottom: .75rem; }
+    .logo-icon {
+      width: 52px; height: 52px; border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent), #ec4899);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem; box-shadow: 0 0 24px var(--accent-glow);
+    }
+    h1 { font-size: 2.1rem; font-weight: 800; letter-spacing: -.5px; }
+    h1 span { background: linear-gradient(135deg, #a78bfa, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: var(--muted); font-size: .95rem; max-width: 460px; margin: 0 auto; line-height: 1.6; }
+
+    /* ── Card ──────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    /* ── Search form ───────────────────────────────────────── */
+    .search-wrap { display: flex; gap: .75rem; flex-wrap: wrap; }
+    .url-input {
+      flex: 1; min-width: 0;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: .75rem 1rem;
+      color: var(--text);
+      font-size: .97rem;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .url-input::placeholder { color: var(--muted); }
+    .url-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .btn-analyze {
+      padding: .75rem 1.6rem;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border: none; border-radius: 10px;
+      color: #fff; font-size: .95rem; font-weight: 600;
+      cursor: pointer;
+      transition: opacity var(--transition), transform var(--transition), box-shadow var(--transition);
+      box-shadow: 0 4px 15px var(--accent-glow);
+      white-space: nowrap;
+    }
+    .btn-analyze:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
+    .btn-analyze:active { transform: translateY(0); }
+    .btn-analyze:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Loading ───────────────────────────────────────────── */
+    .loading-wrap { display: flex; align-items: center; gap: .75rem; color: var(--muted); font-size: .92rem; }
+    .spinner {
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 2.5px solid var(--border);
+      border-top-color: var(--accent);
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Result card ───────────────────────────────────────── */
+    .result-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+    .verdict-badge {
+      display: inline-flex; align-items: center; gap: .45rem;
+      padding: .45rem 1rem; border-radius: 999px;
+      font-size: .88rem; font-weight: 700; letter-spacing: .3px;
+    }
+    .verdict-badge.safe     { background: rgba(34,197,94,.15); color: var(--safe); border: 1px solid rgba(34,197,94,.3); }
+    .verdict-badge.warning  { background: rgba(245,158,11,.15); color: var(--warning); border: 1px solid rgba(245,158,11,.3); }
+    .verdict-badge.danger   { background: rgba(239,68,68,.15); color: var(--danger); border: 1px solid rgba(239,68,68,.3); }
+    .verdict-badge.uncertain{ background: rgba(59,130,246,.15); color: var(--uncertain); border: 1px solid rgba(59,130,246,.3); }
+    .result-desc { color: var(--muted); font-size: .9rem; }
+    .result-hostname { font-size: 1rem; font-weight: 600; word-break: break-all; }
+
+    /* ── Probability bar ───────────────────────────────────── */
+    .prob-section { margin-bottom: 1.5rem; }
+    .prob-label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .5rem; }
+    .prob-label span:first-child { font-size: .88rem; color: var(--muted); font-weight: 500; }
+    .prob-pct { font-size: 1.5rem; font-weight: 800; }
+    .prob-track {
+      height: 10px; border-radius: 999px;
+      background: var(--surface2); overflow: hidden;
+    }
+    .prob-fill {
+      height: 100%; border-radius: 999px;
+      transition: width 1s cubic-bezier(.4,0,.2,1);
+    }
+    .prob-fill.safe     { background: linear-gradient(90deg, #16a34a, var(--safe)); }
+    .prob-fill.warning  { background: linear-gradient(90deg, #d97706, var(--warning)); }
+    .prob-fill.danger   { background: linear-gradient(90deg, #b91c1c, var(--danger)); }
+    .prob-fill.uncertain{ background: linear-gradient(90deg, #1d4ed8, var(--uncertain)); }
+
+    /* ── Two-column section ────────────────────────────────── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+    @media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Risk flags ────────────────────────────────────────── */
+    .section-title {
+      font-size: .78rem; font-weight: 700; letter-spacing: .8px;
+      text-transform: uppercase; color: var(--muted); margin-bottom: .75rem;
+    }
+    .flag-list, .sig-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+    .flag-item, .sig-item {
+      display: flex; align-items: flex-start; gap: .55rem;
+      font-size: .87rem; line-height: 1.4;
+    }
+    .flag-dot {
+      flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; margin-top: 4px;
+    }
+    .flag-dot.high   { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+    .flag-dot.medium { background: var(--warning); }
+    .flag-dot.low    { background: var(--muted); }
+    .sig-check { color: var(--safe); font-size: 1rem; }
+    .empty-msg { color: var(--muted); font-size: .87rem; font-style: italic; }
+
+    /* ── Feature grid ──────────────────────────────────────── */
+    .feat-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: .75rem;
+    }
+    .feat-cell {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .75rem;
+    }
+    .feat-name { font-size: .75rem; color: var(--muted); margin-bottom: .2rem; }
+    .feat-val { font-size: 1.05rem; font-weight: 700; }
+    .feat-val.bool-true  { color: var(--danger); }
+    .feat-val.bool-false { color: var(--safe); }
+
+    /* ── Example pills ─────────────────────────────────────── */
+    .examples-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+    .ex-label { font-size: .8rem; color: var(--muted); width: 100%; }
+    .ex-pill {
+      padding: .3rem .8rem; border-radius: 999px; font-size: .78rem;
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--muted); cursor: pointer;
+      transition: border-color var(--transition), color var(--transition);
+    }
+    .ex-pill:hover { border-color: var(--accent); color: var(--text); }
+    .ex-pill.phish { border-color: rgba(239,68,68,.3); }
+    .ex-pill.legit { border-color: rgba(34,197,94,.3); }
+
+    /* ── Error banner ──────────────────────────────────────── */
+    .error-banner {
+      background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.35);
+      border-radius: 10px; padding: .85rem 1rem;
+      color: #fca5a5; font-size: .9rem;
+      display: flex; align-items: center; gap: .6rem;
+    }
+
+    /* ── Tip ───────────────────────────────────────────────── */
+    .tip-box {
+      background: rgba(108,99,255,.1); border: 1px solid rgba(108,99,255,.25);
+      border-radius: 10px; padding: 1rem 1.25rem;
+      font-size: .86rem; color: var(--muted); line-height: 1.6;
+    }
+    .tip-box strong { color: var(--text); }
+
+    /* ── Utility ───────────────────────────────────────────── */
+    .hidden { display: none !important; }
+    .mt-1 { margin-top: .5rem; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-row">
+      <div class="logo-icon">🛡️</div>
+      <h1>Phish<span>Guard</span></h1>
+    </div>
+    <p class="subtitle">
+      AI-powered phishing detector. Paste any URL to instantly analyse
+      its risk using 30+ URL &amp; structural features.
+    </p>
+  </header>
+
+  <!-- Search Card -->
+  <div class="card">
+    <div class="search-wrap">
+      <input
+        id="urlInput"
+        class="url-input"
+        type="text"
+        placeholder="https://suspicious-login.xyz/verify-account"
+        autocomplete="off" spellcheck="false"
+      />
+      <button id="analyzeBtn" class="btn-analyze" onclick="analyze()">Analyze ↗</button>
+    </div>
+
+    <!-- Example pills -->
+    <div class="examples-row">
+      <span class="ex-label">Try an example:</span>
+      <span class="ex-pill phish" onclick="setUrl('http://paypa1-secure-login.xyz/account/verify')">🎣 paypa1-secure-login.xyz</span>
+      <span class="ex-pill phish" onclick="setUrl('http://192.168.1.1/banking/login.php')">🎣 IP-based login</span>
+      <span class="ex-pill phish" onclick="setUrl('http://amazon.account-update.evil-site.ru/verify')">🎣 Subdomain spoofing</span>
+      <span class="ex-pill legit" onclick="setUrl('https://www.google.com/search?q=weather')">✅ google.com</span>
+      <span class="ex-pill legit" onclick="setUrl('https://github.com/features')">✅ github.com</span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingWrap" class="card hidden">
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      <span>Analysing URL features…</span>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div id="errorWrap" class="card hidden">
+    <div class="error-banner">
+      <span>⚠</span>
+      <span id="errorMsg">Something went wrong.</span>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div id="resultWrap" class="hidden">
+
+    <!-- Main verdict card -->
+    <div class="card">
+      <div class="result-header">
+        <div>
+          <div class="result-hostname" id="resHostname"></div>
+          <div class="result-desc" id="resDesc"></div>
+        </div>
+        <span id="resBadge" class="verdict-badge"></span>
+      </div>
+
+      <!-- Probability bar -->
+      <div class="prob-section">
+        <div class="prob-label">
+          <span>Phishing Probability</span>
+          <span class="prob-pct" id="resPct"></span>
+        </div>
+        <div class="prob-track">
+          <div class="prob-fill" id="probFill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk flags + Positive signals -->
+    <div class="two-col">
+      <div class="card">
+        <div class="section-title">⚠ Risk Signals</div>
+        <ul class="flag-list" id="flagList"></ul>
+      </div>
+      <div class="card">
+        <div class="section-title">✓ Positive Signals</div>
+        <ul class="sig-list" id="sigList"></ul>
+      </div>
+    </div>
+
+    <!-- Feature breakdown -->
+    <div class="card">
+      <div class="section-title">📊 Feature Breakdown</div>
+      <div class="feat-grid" id="featGrid"></div>
+    </div>
+  </div>
+
+  <!-- Tip box -->
+  <div class="tip-box mt-1">
+    <strong>⚡ How it works:</strong> The classifier extracts 30+ URL features
+    — character counts, entropy, TLD reputation, brand-name spoofing, encoding
+    tricks, subdomain depth &amp; more — then feeds them to a Random Forest /
+    Gradient Boosting ensemble trained on thousands of real and synthetic URLs.
+    No page is ever fetched; analysis is purely structural.
+  </div>
+
+</div><!-- .page -->
+
+<script>
+  const $ = id => document.getElementById(id);
+
+  function setUrl(url) {
+    $('urlInput').value = url;
+    $('urlInput').focus();
+  }
+
+  $('urlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') analyze();
+  });
+
+  function showOnly(which) {
+    ['loadingWrap','errorWrap','resultWrap'].forEach(id => {
+      $(id).classList.toggle('hidden', id !== which);
+    });
+  }
+
+  async function analyze() {
+    const url = $('urlInput').value.trim();
+    if (!url) { $('urlInput').focus(); return; }
+
+    $('analyzeBtn').disabled = true;
+    showOnly('loadingWrap');
+
+    try {
+      const resp = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await resp.json();
+
+      if (!resp.ok || data.error) {
+        showError(data.error || 'Unexpected error from server.');
+        return;
+      }
+      renderResult(data);
+    } catch (err) {
+      showError('Network error — is the server running?');
+    } finally {
+      $('analyzeBtn').disabled = false;
+    }
+  }
+
+  function showError(msg) {
+    $('errorMsg').textContent = msg;
+    showOnly('errorWrap');
+  }
+
+  function renderResult(d) {
+    // Badge
+    const badge = $('resBadge');
+    badge.className = `verdict-badge ${d.color}`;
+    const icons = { safe:'✅', warning:'⚠️', danger:'🚨', uncertain:'🔍' };
+    badge.textContent = `${icons[d.color] || ''} ${d.verdict}`;
+
+    $('resHostname').textContent = d.hostname;
+    $('resDesc').textContent = d.description;
+
+    // Probability
+    const pct = d.phishing_probability;
+    $('resPct').textContent = `${pct}%`;
+    $('resPct').style.color = colorForClass(d.color);
+    const fill = $('probFill');
+    fill.className = `prob-fill ${d.color}`;
+    // Trigger animation
+    setTimeout(() => fill.style.width = `${pct}%`, 50);
+
+    // Risk flags
+    const fl = $('flagList');
+    fl.innerHTML = '';
+    if (d.risk_flags.length === 0) {
+      fl.innerHTML = '<li class="empty-msg">No major risk flags.</li>';
+    } else {
+      d.risk_flags.forEach(f => {
+        const li = document.createElement('li');
+        li.className = 'flag-item';
+        li.innerHTML = `<span class="flag-dot ${f.severity}"></span><span>${f.label}</span>`;
+        fl.appendChild(li);
+      });
+    }
+
+    // Positive signals
+    const sl = $('sigList');
+    sl.innerHTML = '';
+    if (d.positive_signals.length === 0) {
+      sl.innerHTML = '<li class="empty-msg">No positive signals found.</li>';
+    } else {
+      d.positive_signals.forEach(s => {
+        const li = document.createElement('li');
+        li.className = 'sig-item';
+        li.innerHTML = `<span class="sig-check">✓</span><span>${s}</span>`;
+        sl.appendChild(li);
+      });
+    }
+
+    // Features
+    const fg = $('featGrid');
+    fg.innerHTML = '';
+    Object.entries(d.features).forEach(([name, val]) => {
+      const cell = document.createElement('div');
+      cell.className = 'feat-cell';
+      let valClass = '';
+      let display = val;
+      if (typeof val === 'boolean') {
+        valClass = val ? 'bool-true' : 'bool-false';
+        display = val ? 'Yes' : 'No';
+      }
+      cell.innerHTML = `
+        <div class="feat-name">${name}</div>
+        <div class="feat-val ${valClass}">${display}</div>
+      `;
+      fg.appendChild(cell);
+    });
+
+    showOnly('resultWrap');
+  }
+
+  function colorForClass(c) {
+    return { safe:'#22c55e', warning:'#f59e0b', danger:'#ef4444', uncertain:'#3b82f6' }[c] || '#e8eaf6';
+  }
+</script>
+</body>
+</html>
+
